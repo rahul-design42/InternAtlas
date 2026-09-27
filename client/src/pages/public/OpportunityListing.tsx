@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useLocation, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import api from '../../lib/axios';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+// api import removed
 import { useAuth } from '../../context/AuthContext';
 import ApplyModal from '../../components/candidate/ApplyModal';
 import { SEO } from '../../components/SEO';
@@ -54,7 +54,6 @@ const QUICK_CHIPS = [
 ];
 
 const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
-  const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
 
