@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-// api import removed
+import { useLocation, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import api from '../../lib/axios';
 import { useAuth } from '../../context/AuthContext';
 import ApplyModal from '../../components/candidate/ApplyModal';
 import { SEO } from '../../components/SEO';
@@ -54,6 +54,7 @@ const QUICK_CHIPS = [
 ];
 
 const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
+  const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -71,15 +72,15 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
   // Filters state
   const [searchKeyword, setSearchKeyword] = useState(searchParams.get('search') || '');
   const [locationKeyword, setLocationKeyword] = useState(searchParams.get('location') || '');
-  const [workModes, setWorkModes] = useState<string[]>(searchParams.getAll('workMode').length ? searchParams.getAll('workMode') : ['Remote', 'Hybrid']);
-  const [minStipend, setMinStipend] = useState(Number(searchParams.get('minStipend')) || 15000);
-  const [selectedSkills, setSelectedSkills] = useState<string[]>(searchParams.getAll('skills').length ? searchParams.getAll('skills') : ['React', 'Python', 'TypeScript']);
+  const [workModes, setWorkModes] = useState<string[]>(searchParams.getAll('workMode'));
+  const [minStipend, setMinStipend] = useState(Number(searchParams.get('minStipend')) || 5000);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>(searchParams.getAll('skills'));
   const [newSkillInput, setNewSkillInput] = useState('');
   const [showAddSkill, setShowAddSkill] = useState(false);
-  const [selectedDurations, setSelectedDurations] = useState<string[]>(searchParams.getAll('duration').length ? searchParams.getAll('duration') : ['1-3 Months', '3-6 Months']);
+  const [selectedDurations, setSelectedDurations] = useState<string[]>(searchParams.getAll('duration'));
   const [sortBy, setSortBy] = useState('Recommended (AI Match)');
   const [page, setPage] = useState(Number(searchParams.get('page')) || 1);
-  const [activeQuickChip, setActiveQuickChip] = useState<string>('Remote');
+  const [activeQuickChip, setActiveQuickChip] = useState<string>('');
 
   // Bookmarking
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
@@ -97,7 +98,7 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
     workModes.forEach(wm => params.append('workMode', wm));
     selectedDurations.forEach(d => params.append('duration', d));
     selectedSkills.forEach(s => params.append('skills', s));
-    if (minStipend !== 15000) params.set('minStipend', String(minStipend));
+    if (minStipend !== 5000) params.set('minStipend', String(minStipend));
     if (page > 1) params.set('page', String(page));
     setSearchParams(params, { replace: true });
   }, [searchKeyword, locationKeyword, workModes, selectedDurations, selectedSkills, minStipend, page, setSearchParams]);
@@ -106,10 +107,11 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
   useEffect(() => {
     setSearchKeyword('');
     setLocationKeyword('');
-    setWorkModes(['Remote', 'Hybrid']);
-    setSelectedDurations(['1-3 Months', '3-6 Months']);
-    setSelectedSkills(['React', 'Python', 'TypeScript']);
-    setMinStipend(15000);
+    setWorkModes([]);
+    setSelectedDurations([]);
+    setSelectedSkills([]);
+    setMinStipend(5000);
+    setActiveQuickChip('');
     setPage(1);
   }, [type]);
 
@@ -139,25 +141,35 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
           filtered = filtered.filter(opp => modes.includes(opp.workMode));
         }
 
-        if (selectedDurations.length > 0) {
-          filtered = filtered.filter(opp => opp.duration && selectedDurations.some(d => opp.duration?.includes(d) || opp.duration === d));
+        // Duration only applies to types that actually have a duration (matches sidebar: internship/hackathon)
+        if ((typeUpper === 'INTERNSHIP' || typeUpper === 'HACKATHON') && selectedDurations.length > 0) {
+          filtered = filtered.filter(opp => !!opp.duration && selectedDurations.some(d => opp.duration?.includes(d) || opp.duration === d));
         }
 
-        if (selectedSkills.length > 0) {
+        // Skills filter only applies where the sidebar shows it (internship/job)
+        if ((typeUpper === 'INTERNSHIP' || typeUpper === 'JOB') && selectedSkills.length > 0) {
           filtered = filtered.filter(opp => {
-            if (!opp.skills) return false;
-            const oppSkills = opp.skills.map((s: any) => s.name.toLowerCase());
+            if (!opp.skills || opp.skills.length === 0) return false;
+            const oppSkills = opp.skills.map((s: any) => (typeof s === 'string' ? s : s.name).toLowerCase());
             return selectedSkills.some(reqSkill => oppSkills.includes(reqSkill.toLowerCase()));
           });
         }
 
-        if (minStipend > 5000) {
+        // Stipend only applies to internships (jobs/hackathons/competitions don't carry stipendAmount)
+        if (typeUpper === 'INTERNSHIP' && minStipend > 5000) {
           filtered = filtered.filter(opp => (opp as any).stipendAmount && (opp as any).stipendAmount >= minStipend);
         }
-        
+
         if (!cancelled) {
-          setOpps(filtered as any[]);
-          setPagination({ total: filtered.length, page: 1, limit: 10, totalPages: 1 });
+          const limit = 9;
+          const total = filtered.length;
+          const totalPages = Math.max(1, Math.ceil(total / limit));
+          const currentPage = Math.min(Math.max(1, page), totalPages);
+          const start = (currentPage - 1) * limit;
+          const pageItems = filtered.slice(start, start + limit);
+
+          setOpps(pageItems as any[]);
+          setPagination({ total, page: currentPage, limit, totalPages });
           setLoading(false);
         }
     };
@@ -493,8 +505,8 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
                     </label>
                     <div className="space-y-2 pt-1">
                       {[
-                        { label: '1–3 Months', count: '680' },
-                        { label: '3–6 Months', count: '492' },
+                        { label: '1-3 Months', count: '680' },
+                        { label: '3-6 Months', count: '492' },
                         { label: '6+ Months (Co-op)', count: '75' },
                       ].map((item) => (
                         <label
@@ -752,7 +764,7 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
                       No opportunities matched your exact filters
                     </h3>
                     <p className="font-body-md text-body-md text-on-surface-variant max-w-md mx-auto mb-space-lg">
-                      We couldn’t find internships matching the selected criteria. Try removing strict stipend floors or broadening your skill keywords.
+                      We couldn’t find {type}s matching the selected criteria. Try removing strict filters or broadening your search.
                     </p>
                     <div className="flex flex-wrap items-center justify-center gap-space-sm">
                       <button
@@ -767,7 +779,7 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
                         className="px-space-md py-2.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface transition-colors font-label-md text-label-md cursor-pointer"
                         type="button"
                       >
-                        Browse all internships
+                        Browse all {type}s
                       </button>
                     </div>
                   </div>
@@ -1027,6 +1039,5 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
     </>
   );
 };
-
 
 export default OpportunityListing;
