@@ -13,7 +13,7 @@ async function seed() {
       email: 'admin@internatlas.com',
       passwordHash: '$2a$10$wK1FmXy3v4y5Z6.exampleHashValueHere',
       role: 'ADMIN',
-      isVerified: true,
+      emailVerified: true,
     });
   }
 
@@ -35,12 +35,11 @@ async function seed() {
   }
 
   // 3. Create Organizations
-  const orgsData = [
+  const orgsData: any[] = [
     {
       name: 'NovaTech Labs',
       slug: 'novatech-labs',
       verificationStatus: 'VERIFIED',
-      isVerified: true,
       description: 'Venture-backed AI & Developer Tools Ecosystem',
       website: 'https://novatechlabs.dev',
       industry: 'Software & Dev Tools',
@@ -51,7 +50,6 @@ async function seed() {
       name: 'DataForge AI',
       slug: 'dataforge-ai',
       verificationStatus: 'VERIFIED',
-      isVerified: true,
       description: 'Enterprise AI and machine learning infrastructure platforms',
       website: 'https://dataforge.ai',
       industry: 'Artificial Intelligence',
@@ -62,7 +60,6 @@ async function seed() {
       name: 'SecureStack',
       slug: 'securestack',
       verificationStatus: 'VERIFIED',
-      isVerified: true,
       description: 'Automated application security and cloud compliance tooling',
       website: 'https://securestack.io',
       industry: 'Cybersecurity',
@@ -73,7 +70,6 @@ async function seed() {
       name: 'PixelWorks Studio',
       slug: 'pixelworks-studio',
       verificationStatus: 'VERIFIED',
-      isVerified: true,
       description: 'High-craft product design, design systems, and frontend interaction engineering',
       website: 'https://pixelworks.design',
       industry: 'Design & Interactive Media',
@@ -84,7 +80,6 @@ async function seed() {
       name: 'CloudMatrix Systems',
       slug: 'cloudmatrix-systems',
       verificationStatus: 'VERIFIED',
-      isVerified: true,
       description: 'Next-gen distributed cloud infrastructure and observability engines',
       website: 'https://cloudmatrix.dev',
       industry: 'Cloud Infrastructure',
@@ -95,7 +90,6 @@ async function seed() {
       name: 'HealthPulse Analytics',
       slug: 'healthpulse-analytics',
       verificationStatus: 'VERIFIED',
-      isVerified: true,
       description: 'Clinical data science and predictive healthcare telemetry',
       website: 'https://healthpulse.ai',
       industry: 'HealthTech & Data Science',
@@ -116,7 +110,7 @@ async function seed() {
   }
 
   // 4. Create Opportunities
-  const oppsData = [
+  const oppsData: any[] = [
     {
       title: 'Frontend Development Intern',
       slug: 'frontend-development-intern-novatech-labs',
