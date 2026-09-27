@@ -1,0 +1,8 @@
+User-agent: *
+Disallow: /admin/
+Disallow: /recruiter/
+Disallow: /student/
+Disallow: /api/
+Allow: /api/public/
+
+Sitemap: https://internatlas.com/api/public/sitemap.xml
