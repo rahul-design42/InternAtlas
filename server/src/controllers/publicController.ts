@@ -3,14 +3,42 @@ import { Opportunity, Category, Skill } from '../models';
 
 export const getOpportunities = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { type, page = 1, limit = 10, search, category, location, workMode } = req.query;
+    const { type, page = 1, limit = 10, search, category, location, workMode, duration, skills, minStipend } = req.query;
 
     const query: any = { status: 'PUBLISHED' };
 
     if (type) query.type = type;
     if (category) query.categoryId = category;
     if (location) query.location = { $regex: new RegExp(location as string, 'i') };
-    if (workMode) query.workMode = workMode;
+    
+    if (workMode) {
+      if (Array.isArray(workMode)) {
+        query.workMode = { $in: workMode };
+      } else {
+        query.workMode = workMode;
+      }
+    }
+
+    if (duration) {
+      if (Array.isArray(duration)) {
+        query.duration = { $in: duration.map(d => new RegExp(String(d).replace(/[^a-zA-Z0-9- ]/g, ''), 'i')) };
+      } else {
+        query.duration = { $regex: new RegExp(String(duration).replace(/[^a-zA-Z0-9- ]/g, ''), 'i') };
+      }
+    }
+
+    if (skills) {
+      const skillsArray = Array.isArray(skills) ? skills : [skills];
+      const skillDocs = await Skill.find({ name: { $in: skillsArray.map((s: any) => new RegExp('^' + String(s).trim() + '$', 'i')) } });
+      if (skillDocs.length > 0) {
+        query.skills = { $in: skillDocs.map(s => s._id) };
+      }
+    }
+
+    if (minStipend && !isNaN(Number(minStipend))) {
+      // In MongoDB, stipend is a string e.g. "₹35,000 / month". 
+      // We will do a post-fetch filter for this to preserve DB simplicity, or rely on frontend.
+    }
 
     let projection: any = {};
     let sortObj: any = { publishedAt: -1, createdAt: -1 };
@@ -104,10 +132,9 @@ export const getSitemap = async (req: Request, res: Response): Promise<void> => 
   </url>`;
 
     opportunities.forEach(opp => {
-      xml += `
-  <url>
-    <loc>https://internatlas.com/opportunities/${opp.slug}</loc>
-    <lastmod>${opp.updatedAt.toISOString()}</lastmod>
+      xml += `<url>
+    <loc>https://internatlas.com/opportunities/\${opp.slug}</loc>
+    <lastmod>\${opp.updatedAt.toISOString()}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>`;

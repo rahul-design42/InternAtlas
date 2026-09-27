@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { useLocation, Link, useNavigate } from 'react-router-dom';
+import { useLocation, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../lib/axios';
 import { useAuth } from '../../context/AuthContext';
 import ApplyModal from '../../components/candidate/ApplyModal';
 import { SEO } from '../../components/SEO';
+import { DUMMY_OPPORTUNITIES } from '../../data/dummyData';
 
 interface SkillObj {
   _id: string;
@@ -66,17 +67,19 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
   });
   const [loading, setLoading] = useState(true);
 
+  const [searchParams, setSearchParams] = useSearchParams();
+
   // Filters state
-  const [searchKeyword, setSearchKeyword] = useState('');
-  const [locationKeyword, setLocationKeyword] = useState('');
-  const [workModes, setWorkModes] = useState<string[]>(['Remote', 'Hybrid']);
-  const [minStipend, setMinStipend] = useState(15000);
-  const [selectedSkills, setSelectedSkills] = useState<string[]>(['React', 'Python', 'TypeScript']);
+  const [searchKeyword, setSearchKeyword] = useState(searchParams.get('search') || '');
+  const [locationKeyword, setLocationKeyword] = useState(searchParams.get('location') || '');
+  const [workModes, setWorkModes] = useState<string[]>(searchParams.getAll('workMode').length ? searchParams.getAll('workMode') : ['Remote', 'Hybrid']);
+  const [minStipend, setMinStipend] = useState(Number(searchParams.get('minStipend')) || 15000);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>(searchParams.getAll('skills').length ? searchParams.getAll('skills') : ['React', 'Python', 'TypeScript']);
   const [newSkillInput, setNewSkillInput] = useState('');
   const [showAddSkill, setShowAddSkill] = useState(false);
-  const [selectedDurations, setSelectedDurations] = useState<string[]>(['1-3 Months', '3-6 Months']);
+  const [selectedDurations, setSelectedDurations] = useState<string[]>(searchParams.getAll('duration').length ? searchParams.getAll('duration') : ['1-3 Months', '3-6 Months']);
   const [sortBy, setSortBy] = useState('Recommended (AI Match)');
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(Number(searchParams.get('page')) || 1);
   const [activeQuickChip, setActiveQuickChip] = useState<string>('Remote');
 
   // Bookmarking
@@ -87,20 +90,29 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
 
   const addSkillRef = useRef<HTMLInputElement>(null);
 
-  // Sync initial query params
+  // Sync URL when state changes
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const q = params.get('q');
-    const loc = params.get('location');
-    const wm = params.get('workMode');
-    if (q) setSearchKeyword(q);
-    if (loc) setLocationKeyword(loc);
-    if (wm) {
-      if (wm.toUpperCase() === 'REMOTE') setWorkModes(['Remote']);
-      else if (wm.toUpperCase() === 'HYBRID') setWorkModes(['Hybrid']);
-      else if (wm.toUpperCase() === 'ON_SITE') setWorkModes(['On-site']);
-    }
-  }, [location.search]);
+    const params = new URLSearchParams();
+    if (searchKeyword.trim()) params.set('search', searchKeyword.trim());
+    if (locationKeyword.trim()) params.set('location', locationKeyword.trim());
+    workModes.forEach(wm => params.append('workMode', wm));
+    selectedDurations.forEach(d => params.append('duration', d));
+    selectedSkills.forEach(s => params.append('skills', s));
+    if (minStipend !== 15000) params.set('minStipend', String(minStipend));
+    if (page > 1) params.set('page', String(page));
+    setSearchParams(params, { replace: true });
+  }, [searchKeyword, locationKeyword, workModes, selectedDurations, selectedSkills, minStipend, page, setSearchParams]);
+
+  // Reset filters when route/type changes
+  useEffect(() => {
+    setSearchKeyword('');
+    setLocationKeyword('');
+    setWorkModes(['Remote', 'Hybrid']);
+    setSelectedDurations(['1-3 Months', '3-6 Months']);
+    setSelectedSkills(['React', 'Python', 'TypeScript']);
+    setMinStipend(15000);
+    setPage(1);
+  }, [type]);
 
   // Fetch opportunities from real API
   useEffect(() => {
@@ -108,48 +120,54 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
 
     const fetchOpps = async () => {
       setLoading(true);
-      try {
-        const params = new URLSearchParams();
+        // Use dummy data directly as requested
         const typeUpper = type.toUpperCase();
-        params.set('type', typeUpper === 'INTERNSHIP' || typeUpper === 'JOB' || typeUpper === 'HACKATHON' || typeUpper === 'COMPETITION' ? typeUpper : 'INTERNSHIP');
-        params.set('page', String(page));
-        params.set('limit', '10');
-
+        let filtered = DUMMY_OPPORTUNITIES.filter(opp => opp.type === (typeUpper === 'INTERNSHIP' || typeUpper === 'JOB' || typeUpper === 'HACKATHON' || typeUpper === 'COMPETITION' ? typeUpper : 'INTERNSHIP'));
+        
         if (searchKeyword.trim()) {
-          params.set('search', searchKeyword.trim());
-        }
-        if (locationKeyword.trim()) {
-          params.set('location', locationKeyword.trim());
-        }
-        if (workModes.length === 1) {
-          params.set('workMode', workModes[0] === 'On-site' ? 'ON_SITE' : workModes[0].toUpperCase());
+          const lower = searchKeyword.toLowerCase();
+          filtered = filtered.filter(opp => opp.title.toLowerCase().includes(lower) || opp.description.toLowerCase().includes(lower));
         }
 
-        const res = await api.get(`/public/opportunities?${params.toString()}`);
-        if (!cancelled && res.data?.success) {
-          setOpps(res.data.data || []);
-          if (res.data.pagination) {
-            setPagination(res.data.pagination);
-          }
+        if (locationKeyword.trim()) {
+          const lower = locationKeyword.toLowerCase();
+          filtered = filtered.filter(opp => opp.location.toLowerCase().includes(lower));
         }
-      } catch (err) {
-        console.error('Failed to load opportunities:', err);
-        if (!cancelled) {
-          setOpps([]);
-          setPagination({ total: 0, page: 1, limit: 10, totalPages: 0 });
+
+        if (workModes.length > 0) {
+          const modeMap: Record<string, string> = { 'Remote': 'REMOTE', 'Hybrid': 'HYBRID', 'On-site': 'ON_SITE' };
+          const modes = workModes.map(m => modeMap[m] || m.toUpperCase());
+          filtered = filtered.filter(opp => modes.includes(opp.workMode));
         }
-      } finally {
+
+        if (selectedDurations.length > 0) {
+          filtered = filtered.filter(opp => opp.duration && selectedDurations.some(d => opp.duration?.includes(d) || opp.duration === d));
+        }
+
+        if (selectedSkills.length > 0) {
+          filtered = filtered.filter(opp => {
+            if (!opp.skills) return false;
+            const oppSkills = opp.skills.map((s: any) => s.name.toLowerCase());
+            return selectedSkills.some(reqSkill => oppSkills.includes(reqSkill.toLowerCase()));
+          });
+        }
+
+        if (minStipend > 5000) {
+          filtered = filtered.filter(opp => (opp as any).stipendAmount && (opp as any).stipendAmount >= minStipend);
+        }
+        
         if (!cancelled) {
+          setOpps(filtered as any[]);
+          setPagination({ total: filtered.length, page: 1, limit: 10, totalPages: 1 });
           setLoading(false);
         }
-      }
     };
 
     fetchOpps();
     return () => {
       cancelled = true;
     };
-  }, [type, page, searchKeyword, locationKeyword, workModes]);
+  }, [type, page, searchKeyword, locationKeyword, workModes, selectedDurations, selectedSkills, minStipend]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -185,11 +203,11 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
   const handleResetFilters = () => {
     setSearchKeyword('');
     setLocationKeyword('');
-    setWorkModes(['Remote', 'Hybrid']);
-    setMinStipend(15000);
-    setSelectedSkills(['React', 'Python', 'TypeScript']);
-    setSelectedDurations(['1-3 Months', '3-6 Months']);
-    setActiveQuickChip('Remote');
+    setWorkModes([]);
+    setMinStipend(5000);
+    setSelectedSkills([]);
+    setSelectedDurations([]);
+    setActiveQuickChip('');
     setPage(1);
   };
 
@@ -229,8 +247,8 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
   return (
     <>
       <SEO
-        title="Internships — InternAtlas"
-        description="Discover vetted internships engineered to launch competitive careers. Filter by verifiable compensation, technical stack, and verified mentorship tracks."
+        title={`${type.charAt(0).toUpperCase() + type.slice(1)}s — InternAtlas`}
+        description={`Discover vetted ${type}s engineered to launch competitive careers.`}
       />
 
       {selectedOppForApply && (
@@ -256,16 +274,15 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm uppercase tracking-wider">
                     Verified Index
                   </span>
-                  <span className="inline-flex items-center gap-1 font-caption text-caption text-on-surface-variant">
-                    <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
-                    Spring &amp; Summer 2025 Cohorts
-                  </span>
                 </div>
-                <h1 className="font-headline-lg text-headline-lg text-on-surface tracking-tight">
-                  Internships
+                <h1 className="font-headline-lg text-headline-lg text-on-surface tracking-tight capitalize">
+                  {type}s
                 </h1>
                 <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">
-                  Discover vetted internships engineered to launch competitive careers. Filter by verifiable compensation, technical stack, and verified mentorship tracks.
+                  {type === 'internship' && 'Discover vetted internships engineered to launch competitive careers. Filter by verifiable compensation, technical stack, and verified mentorship tracks.'}
+                  {type === 'job' && 'Discover full-time roles and fresh graduate opportunities at verified organizations.'}
+                  {type === 'hackathon' && 'Participate in top-tier hackathons to build and showcase your engineering skills.'}
+                  {type === 'competition' && 'Compete in global contests, coding challenges, and case study competitions.'}
                 </p>
               </div>
 
@@ -427,6 +444,7 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
                     </div>
                   </div>
 
+                  {type === 'internship' && (<>
                   {/* Section: Stipend Range */}
                   <div className="space-y-space-xs">
                     <div className="flex items-center justify-between">
@@ -467,6 +485,8 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
                     </div>
                   </div>
 
+                  </>)}
+                  {(type === 'internship' || type === 'hackathon') && (<>
                   {/* Section: Duration */}
                   <div className="space-y-space-xs">
                     <label className="font-label-md text-label-md text-on-surface uppercase tracking-wider">
@@ -497,6 +517,8 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
                     </div>
                   </div>
 
+                  </>)}
+                  {(type === 'internship' || type === 'job') && (<>
                   {/* Section: Required Skills */}
                   <div className="space-y-space-xs">
                     <div className="flex items-center justify-between">
@@ -550,6 +572,7 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
                     </div>
                   </div>
 
+                  </>)}
                   {/* Section: Target Level */}
                   <div className="space-y-space-xs">
                     <label className="font-label-md text-label-md text-on-surface uppercase tracking-wider">
@@ -576,41 +599,6 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
                           <span className="font-caption text-caption text-outline">{item.count}</span>
                         </label>
                       ))}
-                    </div>
-                  </div>
-
-                  {/* Section: Program Format */}
-                  <div className="space-y-space-xs">
-                    <label className="font-label-md text-label-md text-on-surface uppercase tracking-wider">
-                      Opportunity Type
-                    </label>
-                    <div className="space-y-2 pt-1">
-                      <label className="flex items-center justify-between cursor-pointer group select-none">
-                        <span className="flex items-center gap-2.5 font-body-sm text-body-sm text-on-surface group-hover:text-primary">
-                          <input
-                            type="checkbox"
-                            checked={type === 'internship'}
-                            onChange={() => navigate('/internships')}
-                            className="w-4 h-4 rounded text-primary focus:ring-0 accent-primary cursor-pointer"
-                          />
-                          Internship
-                        </span>
-                        <span className="font-caption text-caption text-outline">
-                          {pagination.total > 0 ? pagination.total.toLocaleString() : '1,247'}
-                        </span>
-                      </label>
-                      <label className="flex items-center justify-between cursor-pointer group select-none">
-                        <span className="flex items-center gap-2.5 font-body-sm text-body-sm text-on-surface group-hover:text-primary">
-                          <input
-                            type="checkbox"
-                            checked={type === 'job'}
-                            onChange={() => navigate('/jobs')}
-                            className="w-4 h-4 rounded text-primary focus:ring-0 accent-primary cursor-pointer"
-                          />
-                          Full-Time Graduate Role
-                        </span>
-                        <span className="font-caption text-caption text-outline">320</span>
-                      </label>
                     </div>
                   </div>
 
@@ -654,7 +642,7 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
                 <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-space-sm">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-title-md text-title-md text-primary font-bold">
-                      {pagination.total} internships found
+                      {pagination.total} {type}s found
                     </span>
                     <span className="text-outline hidden sm:inline">•</span>
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -672,18 +660,30 @@ const OpportunityListing = ({ type = 'internship' }: { type?: string }) => {
                           </span>
                         </span>
                       ))}
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-surface-container text-on-surface font-caption text-caption">
-                        Paid
-                        <span className="material-symbols-outlined text-[13px] cursor-pointer hover:text-error">
-                          close
+                      {minStipend > 5000 && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-surface-container text-on-surface font-caption text-caption">
+                          {`₹${(minStipend/1000).toFixed(0)}k+`}
+                          <span onClick={() => setMinStipend(5000)} className="material-symbols-outlined text-[13px] cursor-pointer hover:text-error">
+                            close
+                          </span>
                         </span>
-                      </span>
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-surface-container text-on-surface font-caption text-caption">
-                        1–6 Months
-                        <span className="material-symbols-outlined text-[13px] cursor-pointer hover:text-error">
-                          close
+                      )}
+                      {selectedDurations.map((dur) => (
+                        <span key={dur} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-surface-container text-on-surface font-caption text-caption">
+                          {dur}
+                          <span onClick={() => toggleDuration(dur)} className="material-symbols-outlined text-[13px] cursor-pointer hover:text-error">
+                            close
+                          </span>
                         </span>
-                      </span>
+                      ))}
+                      {selectedSkills.map((skill) => (
+                        <span key={skill} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-surface-container text-on-surface font-caption text-caption">
+                          {skill}
+                          <span onClick={() => removeSkill(skill)} className="material-symbols-outlined text-[13px] cursor-pointer hover:text-error">
+                            close
+                          </span>
+                        </span>
+                      ))}
                     </div>
                   </div>
 
