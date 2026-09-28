@@ -4,7 +4,7 @@ import { config } from './config/env';
 
 const startServer = async () => {
   try {
-    console.log(`Attempting to connect to MongoDB at ${config.mongoUri}...`);
+    console.log(`Attempting to connect to MongoDB`);
     await mongoose.connect(config.mongoUri);
     console.log('MongoDB connected successfully');
 
